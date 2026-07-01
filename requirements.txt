@@ -1,10 +1,12 @@
-# Pinned for Docker Python 3.11 (see Dockerfile)
+# Production deps — no PyTorch/sentence-transformers (OOM on Render 512MB free tier).
+# Catalog TF-IDF vectors precomputed via scripts/build_embeddings.py.
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
 pydantic==2.10.4
-sentence-transformers==3.3.1
-faiss-cpu==1.9.0.post1
 numpy==2.2.1
+scipy==1.15.1
+scikit-learn==1.6.1
+joblib==1.4.2
 openai==1.58.1
 httpx==0.28.1
 pytest==8.3.4

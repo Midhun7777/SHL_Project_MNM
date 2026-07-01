@@ -1,28 +1,35 @@
 """
-Hybrid retriever: semantic (sentence-transformers + FAISS) + structured filters/boosts.
+Hybrid retriever: precomputed TF-IDF vectors + structured filters/boosts.
 
-Used by recommend and compare flows via retrieve(query, filters, k).
+Catalog vectors are built offline (scripts/build_embeddings.py). Runtime uses
+scikit-learn only — no PyTorch/sentence-transformers (~500MB saved on Render).
 """
 from __future__ import annotations
 
+import json
 import logging
 import re
 import threading
+from pathlib import Path
 from typing import Any
 
-import faiss
+import joblib
 import numpy as np
-from sentence_transformers import SentenceTransformer
+from scipy.sparse import load_npz, csr_matrix
+from sklearn.metrics.pairwise import cosine_similarity
 
 from app.catalog import CatalogIndex, CatalogItem, load_catalog_index
 from app.role_packs import slugs_for_query
 
 log = logging.getLogger(__name__)
 
-EMBED_MODEL = "all-MiniLM-L6-v2"
+ROOT = Path(__file__).resolve().parents[1]
+VECTORIZER_PATH = ROOT / "data" / "tfidf_vectorizer.joblib"
+MATRIX_PATH = ROOT / "data" / "catalog_tfidf.npz"
+META_PATH = ROOT / "data" / "catalog_tfidf.meta.json"
 
-# Duration parsing: extract max minutes from strings like "25 minutes", "Untimed", "Variable".
 _DURATION_RE = re.compile(r"(\d+)\s*minute", re.I)
+DEFAULT_OPQ_SLUG = "occupational-personality-questionnaire-opq32r"
 
 
 def parse_duration_minutes(duration: str) -> int | None:
@@ -35,18 +42,13 @@ def parse_duration_minutes(duration: str) -> int | None:
     return int(match.group(1)) if match else None
 
 
-DEFAULT_OPQ_SLUG = "occupational-personality-questionnaire-opq32r"
-
-
 class HybridRetriever:
-    """Semantic index over catalog with optional structured filtering."""
+    """TF-IDF semantic search over catalog with structured filtering."""
 
-    def __init__(self, index: CatalogIndex, model_name: str = EMBED_MODEL) -> None:
+    def __init__(self, index: CatalogIndex) -> None:
         self.index = index
-        self.model_name = model_name
-        self._model: SentenceTransformer | None = None
-        self._faiss_index: faiss.IndexFlatIP | None = None
-        self._embeddings: np.ndarray | None = None
+        self._vectorizer: Any = None
+        self._catalog_matrix: csr_matrix | None = None
         self._lock = threading.Lock()
         self._ready = False
 
@@ -56,25 +58,36 @@ class HybridRetriever:
         with self._lock:
             if self._ready:
                 return
-            log.info("Loading embedding model %s …", self.model_name)
-            self._model = SentenceTransformer(self.model_name)
-            texts = [item.search_text() for item in self.index.items]
-            self._embeddings = self._model.encode(
-                texts, normalize_embeddings=True, show_progress_bar=False
-            ).astype(np.float32)
-            dim = self._embeddings.shape[1]
-            self._faiss_index = faiss.IndexFlatIP(dim)
-            self._faiss_index.add(self._embeddings)
+            if not VECTORIZER_PATH.exists() or not MATRIX_PATH.exists():
+                raise FileNotFoundError(
+                    f"Missing TF-IDF artifacts. Run: python scripts/build_embeddings.py"
+                )
+            log.info("Loading precomputed TF-IDF index …")
+            self._vectorizer = joblib.load(VECTORIZER_PATH)
+            self._catalog_matrix = load_npz(MATRIX_PATH)
+            if META_PATH.exists():
+                meta = json.loads(META_PATH.read_text(encoding="utf-8"))
+                expected = meta.get("entity_ids", [])
+                if len(expected) == len(self.index.items):
+                    for i, (eid, item) in enumerate(
+                        zip(expected, self.index.items, strict=True)
+                    ):
+                        if eid != item.entity_id:
+                            log.warning("TF-IDF row %d entity_id mismatch", i)
             self._ready = True
-            log.info("Retriever ready (%d items, dim=%d)", len(texts), dim)
+            log.info("TF-IDF index ready (%d items)", self._catalog_matrix.shape[0])
 
     def warm(self) -> None:
-        """Pre-load embeddings (optional; /health stays fast without this)."""
         self._ensure_ready()
 
     @property
     def is_ready(self) -> bool:
         return self._ready
+
+    def _semantic_scores(self, query: str) -> np.ndarray:
+        assert self._vectorizer is not None and self._catalog_matrix is not None
+        q_vec = self._vectorizer.transform([query])
+        return cosine_similarity(q_vec, self._catalog_matrix).flatten()
 
     def _apply_filters(
         self, candidates: list[tuple[int, float]], filters: dict[str, Any]
@@ -100,7 +113,6 @@ class HybridRetriever:
             if job_levels:
                 item_levels = {lv.lower() for lv in item.job_levels}
                 if item_levels and not (item_levels & {j.lower() for j in job_levels}):
-                    # Keep items with empty job_levels (many simulations/reports).
                     if item.job_levels:
                         continue
 
@@ -127,7 +139,6 @@ class HybridRetriever:
         return hits / max(len(q_tokens), 1)
 
     def _role_slug_boosts(self, query: str) -> dict[int, float]:
-        """Boost catalog rows strongly associated with role/skill phrases in traces."""
         boosts: dict[int, float] = {}
         q = query.lower()
         rules: list[tuple[list[str], list[str]]] = [
@@ -197,7 +208,6 @@ class HybridRetriever:
                     idx = slug_to_idx.get(slug)
                     if idx is not None:
                         boosts[idx] = max(boosts.get(idx, 0.0), 0.85)
-        # OPQ is a common default across many hiring flows.
         if any(w in q for w in ("personality", "opq", "hire", "senior", "engineer", "analyst", "admin")):
             if "drop the opq" not in q and "remove the opq" not in q:
                 idx = slug_to_idx.get(DEFAULT_OPQ_SLUG)
@@ -206,7 +216,6 @@ class HybridRetriever:
         return boosts
 
     def _exact_name_boosts(self, query: str) -> dict[int, float]:
-        """Large boost when query mentions a catalog product by name or alias."""
         boosts: dict[int, float] = {}
         q = query.lower()
         aliases = {
@@ -232,24 +241,21 @@ class HybridRetriever:
 
     def retrieve(self, query: str, filters: dict[str, Any] | None = None, k: int = 10) -> list[CatalogItem]:
         self._ensure_ready()
-        assert self._model is not None and self._faiss_index is not None
 
         filters = filters or {}
         fetch_k = min(max(k * 5, 50), len(self.index.items))
 
-        q_vec = self._model.encode([query], normalize_embeddings=True).astype(np.float32)
-        scores, indices = self._faiss_index.search(q_vec, fetch_k)
+        sem_scores = self._semantic_scores(query)
+        top_indices = np.argsort(sem_scores)[::-1][:fetch_k]
 
         candidates: list[tuple[int, float]] = []
         name_boosts = self._exact_name_boosts(query)
         role_boosts = self._role_slug_boosts(query)
-        for idx, score in zip(indices[0], scores[0]):
-            if idx < 0:
-                continue
-            i = int(idx)
+        for i in top_indices:
+            i = int(i)
             kw = self._keyword_score(query, self.index.items[i])
             combined = (
-                float(score)
+                float(sem_scores[i])
                 + 0.35 * kw
                 + name_boosts.get(i, 0.0)
                 + role_boosts.get(i, 0.0)
@@ -259,25 +265,22 @@ class HybridRetriever:
         candidates.sort(key=lambda x: x[1], reverse=True)
         candidates = self._apply_filters(candidates, filters)
 
-        # If filters removed everything, fall back to unfiltered semantic top-k.
         if not candidates:
             candidates = [
                 (
-                    int(idx),
-                    float(score)
-                    + 0.35 * self._keyword_score(query, self.index.items[int(idx)])
-                    + name_boosts.get(int(idx), 0.0)
-                    + role_boosts.get(int(idx), 0.0),
+                    int(i),
+                    float(sem_scores[i])
+                    + 0.35 * self._keyword_score(query, self.index.items[int(i)])
+                    + name_boosts.get(int(i), 0.0)
+                    + role_boosts.get(int(i), 0.0),
                 )
-                for idx, score in zip(indices[0], scores[0])
-                if idx >= 0
+                for i in top_indices
             ]
             candidates.sort(key=lambda x: x[1], reverse=True)
 
         seen: set[str] = set()
         results: list[CatalogItem] = []
 
-        # Role-pack slugs first (deterministic, catalog-validated).
         for slug in slugs_for_query(query):
             item = self.index.by_slug.get(slug)
             if item and item.entity_id not in seen:
