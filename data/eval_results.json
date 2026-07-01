@@ -1,0 +1,170 @@
+{
+  "timestamp": "2026-07-01T11:46:36.567402+00:00",
+  "retrieval": {
+    "mean_recall_at_10": 1.0,
+    "per_trace": {
+      "C1": {
+        "recall_at_10": 1.0,
+        "missing": []
+      },
+      "C2": {
+        "recall_at_10": 1.0,
+        "missing": []
+      },
+      "C3": {
+        "recall_at_10": 1.0,
+        "missing": []
+      },
+      "C4": {
+        "recall_at_10": 1.0,
+        "missing": []
+      },
+      "C5": {
+        "recall_at_10": 1.0,
+        "missing": []
+      },
+      "C6": {
+        "recall_at_10": 1.0,
+        "missing": []
+      },
+      "C7": {
+        "recall_at_10": 1.0,
+        "missing": []
+      },
+      "C8": {
+        "recall_at_10": 1.0,
+        "missing": []
+      },
+      "C9": {
+        "recall_at_10": 1.0,
+        "missing": []
+      },
+      "C10": {
+        "recall_at_10": 1.0,
+        "missing": []
+      }
+    }
+  },
+  "chat": {
+    "mean_recall_at_10": 1.0,
+    "per_trace": {
+      "C1": {
+        "recall_at_10": 1.0,
+        "turns": 4,
+        "final_slugs": [
+          "occupational-personality-questionnaire-opq32r",
+          "opq-universal-competency-report-2-0",
+          "opq-leadership-report"
+        ],
+        "missing": []
+      },
+      "C2": {
+        "recall_at_10": 1.0,
+        "turns": 3,
+        "final_slugs": [
+          "smart-interview-live-coding",
+          "linux-programming-general",
+          "networking-and-implementation-new",
+          "shl-verify-interactive-g",
+          "occupational-personality-questionnaire-opq32r"
+        ],
+        "missing": []
+      },
+      "C3": {
+        "recall_at_10": 1.0,
+        "turns": 5,
+        "final_slugs": [
+          "svar-spoken-english-us-new",
+          "contact-center-call-simulation-new",
+          "entry-level-customer-serv-retail-and-contact-center",
+          "customer-service-phone-simulation"
+        ],
+        "missing": []
+      },
+      "C4": {
+        "recall_at_10": 1.0,
+        "turns": 3,
+        "final_slugs": [
+          "shl-verify-interactive-numerical-reasoning",
+          "financial-accounting-new",
+          "basic-statistics-new",
+          "graduate-scenarios",
+          "occupational-personality-questionnaire-opq32r"
+        ],
+        "missing": []
+      },
+      "C5": {
+        "recall_at_10": 1.0,
+        "turns": 3,
+        "final_slugs": [
+          "global-skills-assessment",
+          "global-skills-development-report",
+          "occupational-personality-questionnaire-opq32r",
+          "opq-mq-sales-report",
+          "salestransformationreport2-0-individualcontributor"
+        ],
+        "missing": []
+      },
+      "C6": {
+        "recall_at_10": 1.0,
+        "turns": 3,
+        "final_slugs": [
+          "safety-and-dependability-focus-8-0",
+          "workplace-health-and-safety-new"
+        ],
+        "missing": []
+      },
+      "C7": {
+        "recall_at_10": 1.0,
+        "turns": 4,
+        "final_slugs": [
+          "hipaa-security",
+          "medical-terminology-new",
+          "microsoft-word-365-essentials-new",
+          "dependability-and-safety-instrument-dsi",
+          "occupational-personality-questionnaire-opq32r"
+        ],
+        "missing": []
+      },
+      "C8": {
+        "recall_at_10": 1.0,
+        "turns": 3,
+        "final_slugs": [
+          "microsoft-excel-365-new",
+          "microsoft-word-365-new",
+          "ms-excel-new",
+          "ms-word-new",
+          "occupational-personality-questionnaire-opq32r"
+        ],
+        "missing": []
+      },
+      "C9": {
+        "recall_at_10": 1.0,
+        "turns": 7,
+        "final_slugs": [
+          "core-java-advanced-level-new",
+          "spring-new",
+          "sql-new",
+          "amazon-web-services-aws-development-new",
+          "docker-new",
+          "shl-verify-interactive-g",
+          "occupational-personality-questionnaire-opq32r"
+        ],
+        "missing": []
+      },
+      "C10": {
+        "recall_at_10": 1.0,
+        "turns": 3,
+        "final_slugs": [
+          "shl-verify-interactive-g",
+          "graduate-scenarios"
+        ],
+        "missing": []
+      }
+    }
+  },
+  "probes": {
+    "passed": true,
+    "exit_code": 0
+  }
+}
